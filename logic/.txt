@@ -1,0 +1,29 @@
+graph TD
+    %% User Actions
+    User([User]) -->|Takes Photo of Receipt| Ingest
+    User -->|Asks: What's for dinner?| Chef
+
+    %% Agent 1: The Scanner (Ingest)
+    subgraph Scanner Agent [Step 1: Ingest & Storage]
+        Ingest(Receipt Image) -->|Send to Gemini Vision| Vision{Extract Items}
+        Vision -->|Unclear Item Name?| Search[Web Search Tool]
+        Vision -->|Clear Item Name| Categorize
+        Search -->|Found Real Name| Categorize[Categorize Items]
+        Categorize -->|Update Quantity| DB[(Pantry Database)]
+    end
+
+    %% Agent 2: The Chef (Logic)
+    subgraph Chef Agent [Step 2: Decision Making]
+        Chef(Context Engine) -->|Check Time: Morning?| Breakfast[Filter: Breakfast]
+        Chef -->|Check Inventory| PantryCheck[Filter: In Stock]
+        Chef -->|Check Preferences| Profile[Filter: Taste/Spice]
+        Breakfast & PantryCheck & Profile -->|Generate Options| Recipes[Suggest 3 Recipes]
+    end
+
+    %% Agent 3: The Content (Output)
+    subgraph Content Agent [Step 3: Presentation]
+        Recipes -->|Get Recipe Name| YT[YouTube Search API]
+        YT -->|Find Tutorial| Video[Embed Video]
+        Recipes -->|Gap Analysis| Missing[List Missing Ingredients]
+        Video & Missing --> UI[Show to User in App]
+    end
