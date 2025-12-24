@@ -1,15 +1,5 @@
-# The App UI
 streamlit
-pandas
-pillow
-
-# The "Brain" (Free Tier Available)
 google-generativeai
 python-dotenv
-
-# The "Search" (Completely Free)
 duckduckgo-search
-youtube-search-python
-
-# The Database
-SQLAlchemy
+Pillow
