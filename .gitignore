@@ -1,0 +1,11 @@
+# Ignore the virtual environment (Heavy!)
+.venv/
+venv/
+env/
+__pycache__/
+
+# Ignore sensitive keys (Safety!)
+.env
+
+# Ignore system files
+.DS_Store

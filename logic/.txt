@@ -1,29 +1,59 @@
 graph TD
     %% User Actions
-    User([User]) -->|Takes Photo of Receipt| Ingest
-    User -->|Asks: What's for dinner?| Chef
+    User([User])
+    User -->|Uploads Receipt Photo| API
+    User -->|Asks: What's for dinner?| API
 
-    %% Agent 1: The Scanner (Ingest)
-    subgraph Scanner Agent [Step 1: Ingest & Storage]
-        Ingest(Receipt Image) -->|Send to Gemini Vision| Vision{Extract Items}
-        Vision -->|Unclear Item Name?| Search[Web Search Tool]
-        Vision -->|Clear Item Name| Categorize
-        Search -->|Found Real Name| Categorize[Categorize Items]
-        Categorize -->|Update Quantity| DB[(Pantry Database)]
+    %% API Gateway
+    API[API Gateway / BFF]
+
+    %% =====================
+    %% RECEIPT PIPELINE (ASYNC)
+    %% =====================
+    subgraph Receipt_Pipeline [Receipt Processing - Async]
+        API -->|Store Image| Storage[(Object Storage)]
+        API -->|Emit Event| Queue[Receipt Queue]
+
+        Queue --> OCR[Vision OCR Service]
+        OCR -->|Raw Line Items + Confidence| Normalize
+
+        Normalize[Item Normalization Service]
+        Normalize -->|High Confidence| PantrySvc
+        Normalize -->|Low Confidence| Search
+
+        Search[Web Search / Product Catalog]
+        Search --> Normalize
+
+        PantrySvc[Pantry Service]
+        PantrySvc --> DB[(Pantry Database)]
     end
 
-    %% Agent 2: The Chef (Logic)
-    subgraph Chef Agent [Step 2: Decision Making]
-        Chef(Context Engine) -->|Check Time: Morning?| Breakfast[Filter: Breakfast]
-        Chef -->|Check Inventory| PantryCheck[Filter: In Stock]
-        Chef -->|Check Preferences| Profile[Filter: Taste/Spice]
-        Breakfast & PantryCheck & Profile -->|Generate Options| Recipes[Suggest 3 Recipes]
+    %% =====================
+    %% MEAL PLANNING (SYNC)
+    %% =====================
+    subgraph Meal_Planning [Meal Planning - Sync]
+        API --> Context[Context Builder]
+        Context -->|Time of Day| RuleTime[Time Filter]
+        Context -->|Inventory Snapshot| RuleInventory[Inventory Filter]
+        Context -->|User Preferences| RuleProfile[Preference Filter]
+
+        RuleTime --> Candidates
+        RuleInventory --> Candidates
+        RuleProfile --> Candidates
+
+        Candidates --> LLM[Recipe Reasoning LLM]
+        LLM --> Recipes[Top 3 Recipes + Rationale]
     end
 
-    %% Agent 3: The Content (Output)
-    subgraph Content Agent [Step 3: Presentation]
-        Recipes -->|Get Recipe Name| YT[YouTube Search API]
-        YT -->|Find Tutorial| Video[Embed Video]
-        Recipes -->|Gap Analysis| Missing[List Missing Ingredients]
-        Video & Missing --> UI[Show to User in App]
+    %% =====================
+    %% CONTENT ENRICHMENT
+    %% =====================
+    subgraph Presentation [Content Enrichment]
+        Recipes --> YT[YouTube Search API]
+        Recipes --> Missing[Missing Ingredients Diff]
+        YT --> Video[Recipe Video Links]
+        Video --> UI
+        Missing --> UI
     end
+
+    UI[User Interface]
