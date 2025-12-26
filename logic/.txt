@@ -1,59 +1,25 @@
 graph TD
-    %% User Actions
-    User([User])
-    User -->|Uploads Receipt Photo| API
-    User -->|Asks: What's for dinner?| API
+  User([User]) -->|Uploads Receipt Photo| API[API Gateway/FastAPI]
+  User -->|Asks: What can I cook?| API
 
-    %% API Gateway
-    API[API Gateway / BFF]
+  subgraph Receipt[Receipt Pipeline]
+    API --> StoreImg[Store Image in Object Storage]
+    StoreImg --> OCR[OCR: Textract/Vision OCR/Tesseract]
+    OCR --> Parse[LLM Extract JSON from OCR Text]
+    Parse --> Normalize[Rules+Fuzzy Match Normalizer]
+    Normalize -->|Low confidence| Resolve[LLM Resolve Item Name]
+    Normalize --> PantryDB[(PostgreSQL Pantry DB)]
+    Resolve --> PantryDB
+  end
 
-    %% =====================
-    %% RECEIPT PIPELINE (ASYNC)
-    %% =====================
-    subgraph Receipt_Pipeline [Receipt Processing - Async]
-        API -->|Store Image| Storage[(Object Storage)]
-        API -->|Emit Event| Queue[Receipt Queue]
-
-        Queue --> OCR[Vision OCR Service]
-        OCR -->|Raw Line Items + Confidence| Normalize
-
-        Normalize[Item Normalization Service]
-        Normalize -->|High Confidence| PantrySvc
-        Normalize -->|Low Confidence| Search
-
-        Search[Web Search / Product Catalog]
-        Search --> Normalize
-
-        PantrySvc[Pantry Service]
-        PantrySvc --> DB[(Pantry Database)]
-    end
-
-    %% =====================
-    %% MEAL PLANNING (SYNC)
-    %% =====================
-    subgraph Meal_Planning [Meal Planning - Sync]
-        API --> Context[Context Builder]
-        Context -->|Time of Day| RuleTime[Time Filter]
-        Context -->|Inventory Snapshot| RuleInventory[Inventory Filter]
-        Context -->|User Preferences| RuleProfile[Preference Filter]
-
-        RuleTime --> Candidates
-        RuleInventory --> Candidates
-        RuleProfile --> Candidates
-
-        Candidates --> LLM[Recipe Reasoning LLM]
-        LLM --> Recipes[Top 3 Recipes + Rationale]
-    end
-
-    %% =====================
-    %% CONTENT ENRICHMENT
-    %% =====================
-    subgraph Presentation [Content Enrichment]
-        Recipes --> YT[YouTube Search API]
-        Recipes --> Missing[Missing Ingredients Diff]
-        YT --> Video[Recipe Video Links]
-        Video --> UI
-        Missing --> UI
-    end
-
-    UI[User Interface]
+  subgraph Planner[Meal Planning Pipeline]
+    API --> PantryFetch[Fetch Pantry Snapshot]
+    API --> Prefs[Fetch Preferences]
+    PantryFetch --> Plan[LLM Meal Planner: 3 recipes + missing items]
+    Prefs --> Plan
+    Plan --> Missing[Missing Ingredients List]
+    Plan --> YT[YouTube Search API]
+    YT --> Videos[Video Links]
+    Missing --> UI[Return to App UI]
+    Videos --> UI
+  end

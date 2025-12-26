@@ -2,80 +2,58 @@ import sys
 import os
 import json
 from datetime import datetime
-import google.generativeai as genai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from database.operations import get_current_inventory
 
 load_dotenv()
-api_key = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=api_key)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# We use the smart model for better logic
-model = genai.GenerativeModel('gemini-2.0-flash-lite-preview-02-05')
-
-def suggest_recipes(user_preferences):
-    inventory = get_current_inventory()
-    
+def suggest_recipes(username, user_preferences, people_count):
+    inventory = get_current_inventory(username)
     if not inventory:
         return {"error": "Pantry is empty."}
     
-    ingredients_list = ", ".join([f"{item['item_name']} (x{item['quantity']})" for item in inventory])
-    print(f"   🥦 Cooking with: {ingredients_list}")
-
+    ingredients_list = ", ".join([f"{i['item_name']}" for i in inventory])
+    
     # Time Logic
     current_hour = datetime.now().hour
-    if 5 <= current_hour < 11: time_context = "Breakfast"
-    elif 11 <= current_hour < 16: time_context = "Lunch"
-    else: time_context = "Dinner"
+    if 5 <= current_hour < 11: time_meal = "Breakfast"
+    elif 11 <= current_hour < 16: time_meal = "Lunch"
+    else: time_meal = "Dinner"
+    meal_type = user_preferences.get('occasion', time_meal)
 
-    # --- THE NEW SUPER PROMPT ---
     prompt = f"""
-    You are a Michelin-star Home Chef. 
-    I have these ingredients: {ingredients_list}.
+    You are a Chef.
+    Cooking for: {people_count} People.
+    My Ingredients: {ingredients_list}.
+    Staples: [Salt, Pepper, Oil, Sugar].
     
-    CONTEXT:
-    - Meal: {time_context}
-    - Pace: {user_preferences.get('pace', 'Fast')}
-    - Craving: {user_preferences.get('occasion', 'Any')}
+    Context: {time_meal}, Type: {meal_type}.
     
-    TASK:
-    Suggest 3 HIGH-QUALITY, REAL recipes. Do not invent weird combinations.
-    If I have Paneer, suggest real Indian dishes. If I have Pasta, suggest real Italian dishes.
+    Task: Suggest 5 recipes SCALED for {people_count} people.
     
-    REQUIREMENTS:
-    1. 'youtube_query': Create a specific search term to find the best video. 
-       - BAD: "Paneer recipe"
-       - GOOD: "Authentic Paneer Butter Masala restaurant style recipe"
-    2. 'steps': Provide step-by-step instructions.
-       - Include HEAT LEVEL (Low/Med/High).
-       - Include EXACT TIMING (e.g., "5 mins").
-    
-    Return STRICT JSON:
+    Return JSON:
     {{
         "recipes": [
             {{
                 "name": "Recipe Name",
-                "time_minutes": 30,
-                "difficulty": "Medium",
-                "description": "Appetizing description.",
-                "used_ingredients": ["List..."],
-                "missing_ingredients": ["List..."],
-                "youtube_query": "Best authentic [Dish Name] video recipe",
-                "steps": [
-                    {{"step": "Heat pan and add oil", "heat": "High", "time": "2 mins"}},
-                    {{"step": "Add onions and saute until golden", "heat": "Medium", "time": "5 mins"}}
-                ]
+                "time_minutes": 20,
+                "description": "Description",
+                "used_ingredients": ["Rice", "Spinach"],
+                "steps": ["Step 1...", "Step 2..."]
             }}
         ]
     }}
     """
-    
     try:
-        response = model.generate_content(prompt)
-        clean_json = response.text.replace("```json", "").replace("```", "").strip()
-        return json.loads(clean_json)
-    except Exception as e:
-        print(f"❌ Error: {e}")
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={ "type": "json_object" }
+        )
+        return json.loads(response.choices[0].message.content)
+    except:
         return []
